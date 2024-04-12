@@ -21,7 +21,7 @@ const getDirect = async (req, res) => {
     }
 }
 
-const getDirects = async (req, res) => {
+const getDirects = async (req, res ) => {
     const userId = req.user.id;
     const user = await User.findById(userId);
     if(user.directs.length === 0){
@@ -97,6 +97,13 @@ const getInfoChatItem = async (req, res) => {
 
 module.exports = {
     getDirect,
-    getDirects,
+    getDirects,   
+
+
     getInfoChatItem
+
+
+
 }
+
+
