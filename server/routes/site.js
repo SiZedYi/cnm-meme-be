@@ -29,10 +29,10 @@ router.get('/group/:id', authenticateJWT, getGroup);
 router.get('/groups/', authenticateJWT, getGroups);
 router.get('/groupByGroupDetailId/:groupDetailId', authenticateJWT, getGroupByGroupDetailId);
 router.get('/info-group-items', authenticateJWT, getInfoGroupItem);
-router.delete('/groups/:groupId/deleteMember', authenticateJWT, deleteMember);
-router.post('/groups/:groupId/outGroup', authenticateJWT, outGroup);
+router.delete('/groups/deleteMember/:groupId', authenticateJWT, deleteMember);
+router.post("/groups/outGroup/:groupId", authenticateJWT, outGroup);
 
-router.post("/creategroup", authenticateJWT, createGroup);
+router.post("/createGroup", authenticateJWT, createGroup);
 router.post("/groups/:groupId/addMember", authenticateJWT, addMember);
 
 //Direct

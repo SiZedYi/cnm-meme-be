@@ -9,7 +9,7 @@ const GroupSchema = new Schema({
   ownerId: {
     type: Types.ObjectId,
     default: null
-  },
+    },
   photoURL: {
     type: String,
     default: ''
