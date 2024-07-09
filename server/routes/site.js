@@ -95,27 +95,7 @@ router.get("/groupDetail/:id", authenticateJWT, getGroupDetail);
 router.get("/groupDetails/", authenticateJWT, getGroupDetails);
 
 //Group
-router.get("/group/:id", authenticateJWT, getGroup);
-router.get("/groups/", authenticateJWT, getGroups);
-router.get(
-  "/groupByGroupDetailId/:groupDetailId",
-  authenticateJWT,
-  getGroupByGroupDetailId
-);
-router.get("/info-group-items", authenticateJWT, getInfoGroupItem);
-router.post("/groups/:chatRoomId/delete-member", authenticateJWT, deleteMember);
-router.post("/groups/:chatRoomId/outGroup", authenticateJWT, outGroup);
-router.delete("/delete-group/:groupId", authenticateJWT, deleteGroup);
-router.post(
-  "/creategroup",
-  authenticateJWT,
-  upload.single("photo"),
-  createGroup
-);
-// router.post("/groups/:groupId/addMember", authenticateJWT, addMember);
-router.post("/groups/:chatRoomId/add-member", authenticateJWT, addMember);
-router.post("/delete-group", authenticateJWT, deleteGroup);
-router.post("/grant-permission", authenticateJWT, grantPermissionMember);
+
 
 router.get("/profile-group/:groupId", authenticateJWT, getProfileGroup);
 //Direct

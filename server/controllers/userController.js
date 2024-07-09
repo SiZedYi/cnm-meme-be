@@ -517,7 +517,7 @@ const searchUserName = async (req, res) => {
 
 
 const addFriend = async (req, res) => {
-  const friendId = req.body.userInfo._id;
+  const friendId = req.body.friendId;
   try {
     const user = await User.findById(req.user.id);
     const friend = await User.findById(friendId);
