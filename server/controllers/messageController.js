@@ -1,6 +1,9 @@
 const Message = require("../models/message");
 const ChatRoom = require("../models/chatRoom");
-const Direct = require("../models/Direct");
+const User = require("../models/user")
+const Direct = require("../models/direct");
+const Group = require("../models/group");
+
 const ApiCode = require("../utils/apicode");
 const apiCode = new ApiCode();
 const { Types } = require('mongoose');
@@ -25,7 +28,7 @@ const getMessage = async (req, res) => {
     else {
       return res.status(200).json(apiCode.success(message, "Get Message Success"));
     }
-  } 
+  }
   catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -35,29 +38,54 @@ const getMessages = async (req, res) => {
   try{
     const chatRoomId = req.params.chatRoomId;
     const direct = await Direct.findOne({ receiverId: { $ne: req.user.id }, chatRoomId: chatRoomId });
+    const group = await Group.findOne({chatRoomId: chatRoomId}) || null
     const chatRoom = await ChatRoom.findById(chatRoomId);
-    if(!chatRoom || !direct || !chatRoom.messages || chatRoom.messages.length === 0 || !chatRoom.messages[0]){
+    // console.log(chatRoom);
+    if(!chatRoom || (!direct && !group) || !chatRoom.messages || chatRoom.messages.length === 0 || !chatRoom.messages[0]){
       console.log('Messages not found');
       return res.status(404).json(apiCode.error('Messages not found'));
     }
     else{
       const messages = await Message.find({ _id: { $in: chatRoom.messages } });
-      const messageList = messages.map(message => {
+      const senderIds = new Set(messages.map(message => message.senderID)); // Lấy tất cả các senderId
+
+      // Tạo một đối tượng tạm thời để lưu trữ thông tin người gửi đã được truy vấn trước đó
+      const senderInfoCache = {};
+
+      // Duyệt qua từng senderId và kiểm tra xem thông tin đã được truy vấn trước đó hay chưa
+      await Promise.all(Array.from(senderIds).map(async (senderId) => {
+        if (!senderInfoCache[senderId]) {
+            const sender = await User.findById(senderId, 'displayName photoURL');
+            senderInfoCache[senderId] = sender;
+        }
+      }));
+
+      const messageList = await Promise.all(messages.map( async message => {
+        const sender = senderInfoCache[message.senderID];
         return {
           id: message._id,
           content: message.content,
-          sent: req.user.id === message.senderID.toString(),
+          isSent: req.user.id === message.senderID.toString(),
+          // lấy thông tin người gửi
+          sent: message.senderID,
+          isSent: req.user.id === message.senderID.toString(),
+          reply: message.reply,
+          senderName: sender.displayName,
+          avatarSender: sender.photoURL,
           unsent: message.isDeleted,
           isForwarded: message.isForwarded? true : false,
           time: message.createAt.getHours() + ':' + message.createAt.getMinutes(),
           reactions: message.reactions,
           hided: message.hidedUsers.includes(new Types.ObjectId(req.user.id)),
           type: message.type,
-          media: message.media
+          media: message.media,
+          pin: message.pin
         }
-      });
-      direct.unreadMessageCount = 0;
-      await direct.save();
+      }))
+      if(direct){
+        direct.unreadMessageCount = 0;
+        await direct.save();
+      }
       return res.status(200).json(apiCode.success(messageList, 'Get Messages Success'));
     }
   }catch(error){
@@ -65,6 +93,25 @@ const getMessages = async (req, res) => {
   }
 };
 
+// const getMessages = async (req, res) => {
+//   try {
+//     const chatRoomId = req.params.chatRoomId;
+//     const chatRoom = await ChatRoom.findById(chatRoomId);
+//     const messages = await Message.find({ _id: { $in: chatRoom.messages } });
+//     let sent = true;
+//     const messageList = messages.map(message => {
+//       return {
+//         id: message._id,
+//         content: message.content,
+//         sent: sent = !sent,
+//         time: message.createAt.getHours() + ':' + (message.createAt.getMinutes() < 10 ? '0' + message.createAt.getMinutes() : message.createAt.getMinutes())
+//       }
+//     });
+//     return res.status(200).json(apiCode.success(messageList, 'Get Messages Success'));
+//   } catch (error) {
+//     res.status(500).json({ message: error.message });
+//   }
+// };
 const searchMessages = async (req, res) => {
   const chatRoomId = req.params.chatRoomId;
   const keyword = req.query._q;
@@ -75,7 +122,6 @@ const searchMessages = async (req, res) => {
       index: messages.indexOf(message),
       id: message._id,
       content: message.content,
-      sent: req.user.id === message.senderID.toString(),
       time: message.createAt.getHours() + ':' + (message.createAt.getMinutes() < 10 ? '0' + message.createAt.getMinutes() : message.createAt.getMinutes())
     }
   });
@@ -83,19 +129,28 @@ const searchMessages = async (req, res) => {
 };
 
 const sendMessage = async (req, res) => {
-  const { chatRoomId, content } = req.body.data;
+  const { chatRoomId, content, reply } = req.body.data;
   const ChatRoom = require('../models/chatRoom');
   const direct = await Direct.findOne({ receiverId: { $eq: req.user.id }, chatRoomId: chatRoomId });
+  const group = await Group.findOne({chatRoomId: chatRoomId}) || null
+
   const newMessage = new Message({
     senderID: req.user.id,
     content: content,
+    reply: reply
   });
+  console.log(newMessage);
   const message = await newMessage.save();
   const chatRoom = await ChatRoom.findById(chatRoomId);
   chatRoom.messages.push(message._id);
   chatRoom.lastMessage = message._id;
-  direct.unreadMessageCount += 1;
-  await direct.save();
+  if (direct) {
+    direct.unreadMessageCount += 1;
+    await direct.save();
+  }
+  if(group) {
+    await group.save()
+  }
   await chatRoom.save();
   return res.status(200).json(apiCode.success(message, 'Send Message Success'));
 };
@@ -259,17 +314,50 @@ const deleteMessage = async (req, res) => {
       const chatRoom = await ChatRoom.findOne({ messages: { $in: [id] } });
       chatRoom.messages = chatRoom.messages.filter(messageId => messageId.toString() !== id);
       chatRoom.lastMessage = chatRoom.messages[chatRoom.messages.length - 1];
-      //how to delete a message in Message collection: 
+      //how to delete a message in Message collection:
       await message.deleteOne();
       await chatRoom.save();
-      
+
       return res.status(200).json(apiCode.success(message, "Delete Message Success"));
     }
   }catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
+const pinMessage = async (req, res) => {
+  const id = req.params.id; // Lấy id của tin nhắn từ yêu cầu
+  try {
+    const message = await Message.findById(id);
+    if (!message) {
+      return res.status(404).json(apiCode.error("Message not found"));
+    } else {
+      // Cập nhật trạng thái pin của tin nhắn trong cơ sở dữ liệu
+      message.pin = true;
+      await message.save();
 
+      return res.status(200).json(apiCode.success(message, "Pin Message Success"));
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+const unPinMessage = async (req, res) => {
+  const id = req.params.id; // Lấy id của tin nhắn từ yêu cầu
+  try {
+    const message = await Message.findById(id);
+    if (!message) {
+      return res.status(404).json(apiCode.error("Message not found"));
+    } else {
+      // Cập nhật trạng thái pin của tin nhắn trong cơ sở dữ liệu
+      message.pin = false;
+      await message.save();
+
+      return res.status(200).json(apiCode.success(message, "UnPin Message Success"));
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 module.exports = {
   getMessage,
   getMessages,
@@ -280,6 +368,8 @@ module.exports = {
   reactMessage,
   forwardMessage,
   hideMessage,
-  deleteMessage
+  deleteMessage,
+  pinMessage,
+  unPinMessage
 
 }
